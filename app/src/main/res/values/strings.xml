@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">My Application</string>
+    <string name="magic_message">Bạn muốn gì ở tui</string>
+    <string name="magic_button1">Record data</string>
+    <string name="magic_button2">Display data</string>
+    <string name="title_activity_maps">MapsActivity</string>
+    <string name="title_activity_display">DisplayData</string>
+</resources>
