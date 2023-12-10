@@ -3,6 +3,7 @@ package com.example.myapplication;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.SensorListener;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
@@ -44,14 +45,20 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 
-public class MapsActivity extends AppCompatActivity implements LocationListener {
+public class MapsActivity extends AppCompatActivity implements LocationListener, SensorEventListener  {
 
     private MapView mapView;
     private IMapController mapController;
     private LocationManager locationManager;
     private MyLocationNewOverlay myLocationOverlay;
     private TextView coorTextView;
-
+    private SensorManager sensorManager;
+    private Sensor accelerometerSensor;
+    private Sensor gyroscopeSensor;
+    private Sensor magnetometerSensor;
+    private float[] accelerometerValues = new float[3];
+    private float[] gyroscopeValues = new float[3];
+    private float[] magnetometerValues = new float[3];
     private static final int LOCATION_PERMISSION_REQUEST_CODE = 1;
     private boolean isRecording = false;
     private File csvFile;
@@ -85,8 +92,12 @@ public class MapsActivity extends AppCompatActivity implements LocationListener 
                 updateLocationAndMoveCamera();
                 writeLocationData(myLocationOverlay.getMyLocation().getLatitude(),
                         myLocationOverlay.getMyLocation().getLongitude(),
-                        System.currentTimeMillis());
+                        System.currentTimeMillis(),
+                        accelerometerValues[0], accelerometerValues[1], accelerometerValues[2],
+                        gyroscopeValues[0], gyroscopeValues[1], gyroscopeValues[2],
+                        magnetometerValues[0], magnetometerValues[1], magnetometerValues[2]);
             }
+
         });
         // Thiết lập bản đồ
         mapView = findViewById(R.id.map);
@@ -121,7 +132,20 @@ public class MapsActivity extends AppCompatActivity implements LocationListener 
         if (checkLocationPermission()) {
         }
         coorTextView = findViewById(R.id.textViewCoordinates);
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        gyroscopeSensor = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        magnetometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
 
+        if (accelerometerSensor != null) {
+            sensorManager.registerListener((SensorEventListener) this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
+        if (gyroscopeSensor != null) {
+            sensorManager.registerListener((SensorEventListener) this, gyroscopeSensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
+        if (magnetometerSensor != null) {
+            sensorManager.registerListener((SensorEventListener) this, magnetometerSensor, SensorManager.SENSOR_DELAY_NORMAL);
+        }
     }
     private void startRecording() {
         if (!isRecording) {
@@ -129,7 +153,10 @@ public class MapsActivity extends AppCompatActivity implements LocationListener 
             csvFile = new File(directoryPath, "location_data.csv");
             try {
                 csvWriter = new FileWriter(csvFile, true);
-                csvWriter.append("Latitude,Longitude,Time\n"); // Header
+                csvWriter.append("Latitude,Longitude,Time," +
+                        "AccelerometerX,AccelerometerY,AccelerometerZ," +
+                        "GyroscopeX,GyroscopeY,GyroscopeZ," +
+                        "MagnetometerX,MagnetometerY,MagnetometerZ\n"); // Header
                 isRecording = true;
 
             } catch (Exception e) {
@@ -158,11 +185,19 @@ public class MapsActivity extends AppCompatActivity implements LocationListener 
             Toast.makeText(this, "Không có dữ liệu ghi.", Toast.LENGTH_SHORT).show();
         }
     }
-    private void writeLocationData(double latitude, double longitude, long timestamp) {
+    private void writeLocationData(double latitude, double longitude, long timestamp,
+                                   float accelerometerX, float accelerometerY, float accelerometerZ,
+                                   float gyroscopeX, float gyroscopeY, float gyroscopeZ,
+                                   float magnetometerX, float magnetometerY, float magnetometerZ) {
         if (isRecording) {
             try {
                 // Ghi dữ liệu vào tệp CSV
-                csvWriter.append(String.format(Locale.getDefault(), "%s,%s,%s\n", latitude, longitude, getFormattedTime(timestamp)));
+                csvWriter.append(String.format(Locale.getDefault(),
+                        "%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+                        latitude, longitude, getFormattedTime(timestamp),
+                        accelerometerX, accelerometerY, accelerometerZ,
+                        gyroscopeX, gyroscopeY, gyroscopeZ,
+                        magnetometerX, magnetometerY, magnetometerZ));
             } catch (IOException e) {
                 e.printStackTrace();
                 // Xử lý lỗi khi không thể ghi dữ liệu
@@ -197,16 +232,32 @@ public class MapsActivity extends AppCompatActivity implements LocationListener 
             Marker marker = new Marker(mapView);
             marker.setPosition(currentLocation);
             mapView.getOverlays().add(marker);
-            updateTextView(currentLocation.getLatitude(), currentLocation.getLongitude(), System.currentTimeMillis());
+            updateTextView(myLocationOverlay.getMyLocation().getLatitude(),
+                    myLocationOverlay.getMyLocation().getLongitude(),
+                    System.currentTimeMillis(),
+                    accelerometerValues[0], accelerometerValues[1], accelerometerValues[2],
+                    gyroscopeValues[0], gyroscopeValues[1], gyroscopeValues[2],
+                    magnetometerValues[0], magnetometerValues[1], magnetometerValues[2]);
             mapView.invalidate(); // Cập nhật lại bản đồ
         } else {
             // Xử lý khi không thể lấy được vị trí
             Toast.makeText(this, "Không thể lấy được vị trí hiện tại.", Toast.LENGTH_SHORT).show();
         }
     }
-    private void updateTextView(double latitude, double longitude, long timestamp) {
+    private void updateTextView(double latitude, double longitude, long timestamp,
+                                float accelerometerX, float accelerometerY, float accelerometerZ,
+                                float gyroscopeX, float gyroscopeY, float gyroscopeZ,
+                                float magnetometerX, float magnetometerY, float magnetometerZ) {
         String formattedTime = getFormattedTime(timestamp);
-        String text = String.format("Latitude: %.7f\nLongitude: %.7f\nTime (UTC): %s", latitude, longitude, formattedTime);
+        String text = String.format(Locale.getDefault(),
+                "Latitude: %.7f\nLongitude: %.7f\nTime (UTC): %s\n" +
+                        "Accelerometer: X=%.2f, Y=%.2f, Z=%.2f\n" +
+                        "Gyroscope: X=%.2f, Y=%.2f, Z=%.2f\n" +
+                        "Magnetometer: X=%.2f, Y=%.2f, Z=%.2f",
+                latitude, longitude, formattedTime,
+                accelerometerX, accelerometerY, accelerometerZ,
+                gyroscopeX, gyroscopeY, gyroscopeZ,
+                magnetometerX, magnetometerY, magnetometerZ);
         coorTextView.setText(text);
     }
 
@@ -230,7 +281,15 @@ public class MapsActivity extends AppCompatActivity implements LocationListener 
 
         mapView.invalidate(); // Cập nhật lại bản đồ
     }
-
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            System.arraycopy(event.values, 0, accelerometerValues, 0, 3);
+        } else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
+            System.arraycopy(event.values, 0, gyroscopeValues, 0, 3);
+        } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+            System.arraycopy(event.values, 0, magnetometerValues, 0, 3);
+        }
+    }
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -240,5 +299,39 @@ public class MapsActivity extends AppCompatActivity implements LocationListener 
                 Toast.makeText(this, "Ứng dụng cần quyền truy cập vị trí để hoạt động.", Toast.LENGTH_SHORT).show();
             }
         }
+    }
+    protected void onResume() {
+        super.onResume();
+        if (sensorManager != null) {
+            if (accelerometerSensor != null) {
+                sensorManager.registerListener((SensorEventListener) this, accelerometerSensor, SensorManager.SENSOR_DELAY_NORMAL);
+            }
+            if (gyroscopeSensor != null) {
+                sensorManager.registerListener((SensorEventListener) this, gyroscopeSensor, SensorManager.SENSOR_DELAY_NORMAL);
+            }
+            if (magnetometerSensor != null) {
+                sensorManager.registerListener((SensorEventListener) this, magnetometerSensor, SensorManager.SENSOR_DELAY_NORMAL);
+            }
+        }
+    }
+    protected void onPause() {
+        super.onPause();
+        unregisterSensorListeners();
+    }
+    private void unregisterSensorListeners() {
+        if (sensorManager != null) {
+            if (accelerometerSensor != null) {
+                sensorManager.unregisterListener(this, accelerometerSensor);
+            }
+            if (gyroscopeSensor != null) {
+                sensorManager.unregisterListener(this, gyroscopeSensor);
+            }
+            if (magnetometerSensor != null) {
+                sensorManager.unregisterListener(this, magnetometerSensor);
+            }
+        }
+    }
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        // Xử lý sự kiện khi độ chính xác của cảm biến thay đổi (nếu cần)
     }
 }
